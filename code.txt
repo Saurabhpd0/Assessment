@@ -1,0 +1,121 @@
+import java.time.*;
+import java.util.*;
+import java.util.stream.Collectors;
+
+public class Calendly {
+
+    enum AppointmentType {
+        GENERAL(30), FOLLOW_UP(15), PHYSICAL_EXAM(45), SPECIALIST(60);
+        final int minutes;
+        AppointmentType(int minutes) { this.minutes = minutes; }
+    }
+
+    static class Appointment {
+        LocalDateTime start;
+        LocalDateTime end;
+        AppointmentType type;
+        String patient;
+
+        Appointment(LocalDateTime start, AppointmentType type, String patient) {
+            this.start = start;
+            this.end = start.plusMinutes(type.minutes);
+            this.type = type;
+            this.patient = patient;
+        }
+
+        public String toString() {
+            return start + "  " + end + "  " + type + "  " + patient;
+        }
+    }
+
+    static class DoctorSchedule {
+        LocalTime workStart;
+        LocalTime workEnd;
+        List<Appointment> appointments = new ArrayList<>();
+
+        DoctorSchedule(LocalTime workStart, LocalTime workEnd) {
+            this.workStart = workStart;
+            this.workEnd = workEnd;
+        }
+
+        // Fetch working hours
+        String getWorkingHours() {
+            return "Working: " + workStart + " - " + workEnd;
+        }
+
+        // Fetching existing appointments for a day
+        List<Appointment> getAppointments(LocalDate day) {
+            return appointments.stream()
+                    .filter(a -> a.start.toLocalDate().equals(day))
+                    .sorted(Comparator.comparing(a -> a.start))
+                    .collect(Collectors.toList());
+        }
+
+        // Getting available slots for a given appointment type
+        List<LocalDateTime> getAvailableSlots(LocalDate day, AppointmentType type) {
+            List<LocalDateTime> free = new ArrayList<>();
+            LocalDateTime t = LocalDateTime.of(day, workStart);
+            LocalDateTime endOfDay = LocalDateTime.of(day, workEnd);
+            
+            while (!t.plusMinutes(type.minutes).isAfter(endOfDay)) {
+                LocalDateTime slotEnd = t.plusMinutes(type.minutes);
+                if (isFree(t, slotEnd)) free.add(t);
+                t = t.plusMinutes(15); // step by 15 minutes for more options
+            }
+            return free;
+        }
+
+        // Create new appointment if free
+        boolean book(LocalDateTime start, AppointmentType type, String patient) {
+            LocalDateTime end = start.plusMinutes(type.minutes);
+            if (!isInsideWorkingHours(start, end)) return false;
+            if (!isFree(start, end)) return false;
+            appointments.add(new Appointment(start, type, patient));
+            return true;
+        }
+
+        private boolean isInsideWorkingHours(LocalDateTime start, LocalDateTime end) {
+            LocalTime s = start.toLocalTime(), e = end.toLocalTime();
+            return !s.isBefore(workStart) && !e.isAfter(workEnd);
+        }
+
+        private boolean isFree(LocalDateTime start, LocalDateTime end) {
+            for (Appointment a : appointments) {
+                boolean overlap = !(end.isEqual(a.start) || end.isBefore(a.start)
+                        || start.isEqual(a.end) || start.isAfter(a.end));
+                if (overlap) return false;
+            }
+            return true;
+        }
+    }
+
+    // 
+    public static void main(String[] args) {
+        DoctorSchedule doc = new DoctorSchedule(LocalTime.of(9, 0), LocalTime.of(17, 0));
+
+        LocalDate today = LocalDate.now();
+
+        // Existing appointments
+        doc.book(LocalDateTime.of(today, LocalTime.of(9, 0)), AppointmentType.GENERAL, "Saurabh");
+        doc.book(LocalDateTime.of(today, LocalTime.of(10, 0)), AppointmentType.FOLLOW_UP, "Rahul");
+
+        System.out.println(doc.getWorkingHours());
+        System.out.println("Existing appointments:");
+        doc.getAppointments(today).forEach(System.out::println);
+
+        System.out.println("\nAvailable GENERAL slots:");
+        doc.getAvailableSlots(today, AppointmentType.GENERAL)
+                .forEach(t -> System.out.println(t.toLocalTime()));
+
+        // create a new appointment
+        LocalDateTime newSlot = LocalDateTime.of(today, LocalTime.of(11, 0));
+        if (doc.book(newSlot, AppointmentType.PHYSICAL_EXAM, "Charlie")) {
+            System.out.println("\nBooked PHYSICAL_EXAM at 11:00 for Charlie");
+        } else {
+            System.out.println("\nCould not book 11:00 for Charlie");
+        }
+
+        System.out.println("\nUpdated appointments:");
+        doc.getAppointments(today).forEach(System.out::println);
+    }
+}
